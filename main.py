@@ -1,6 +1,7 @@
 import nmap
 import sys
 import requests
+import argparse
 
 def get_vulnerabilities(cpe):
     """
@@ -22,13 +23,26 @@ def get_vulnerabilities(cpe):
         print(f"Error querying vulnerability database: {e}", file=sys.stderr)
         return None
 
-def scan_host(host):
+def verify_vulnerabilities(host, port):
     """
-    Scans the given host for open ports, services, and vulnerabilities.
+    Verifies vulnerabilities on a specific port using the nmap-vulners script.
     """
     try:
         nm = nmap.PortScanner()
-        # Scan for services and versions, and try to get CPEs
+        nm.scan(hosts=host, ports=str(port), arguments='-sV --script vulners')
+        return nm[host]['tcp'][port].get('script', {}).get('vulners')
+    except (nmap.PortScannerError, KeyError) as e:
+        print(f"Error during vulnerability verification: {e}", file=sys.stderr)
+        return None
+
+def scan_host(host, verify=False):
+    """
+    Scans the given host for open ports, services, and vulnerabilities.
+    Optionally verifies the vulnerabilities.
+    """
+    try:
+        nm = nmap.PortScanner()
+        # Scan for services and versions
         nm.scan(host, '1-1024', arguments='-sV')
         scan_results = []
         for host in nm.all_hosts():
@@ -46,6 +60,11 @@ def scan_host(host):
                         else:
                             vulnerabilities = get_vulnerabilities(cpe)
                         port_info['vulnerabilities'] = vulnerabilities
+
+                        if verify:
+                            verification_result = verify_vulnerabilities(host, port)
+                            port_info['verification'] = verification_result
+
                         proto_info["ports"].append(port_info)
                 host_info["protocols"].append(proto_info)
             scan_results.append(host_info)
@@ -55,16 +74,15 @@ def scan_host(host):
         return []
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(description="A simple vulnerability scanner.")
     parser.add_argument("host", help="The target host to scan.")
+    parser.add_argument("--verify", action="store_true", help="Run vulnerability verification scripts.")
     args = parser.parse_args()
 
     target = args.host
 
     print(f"Scanning {target} for open ports, services, and vulnerabilities...")
-    results = scan_host(target)
+    results = scan_host(target, verify=args.verify)
     if results:
         for result in results:
             print(f"Host: {result['host']} ({result['hostname']})")
@@ -79,10 +97,15 @@ if __name__ == "__main__":
                     print(f"  CPE: {cpe}")
                     vulnerabilities = port_info.get('vulnerabilities')
                     if vulnerabilities and vulnerabilities.get('total', 0) > 0:
-                        print("  Vulnerabilities:")
+                        print("  Vulnerabilities (from Shodan):")
                         for vuln in vulnerabilities.get('data', []):
                             print(f"    - {vuln['cve_id']}: {vuln['summary']}")
                     else:
-                        print("  No vulnerabilities found for this service.")
+                        print("  No vulnerabilities found for this service (from Shodan).")
+
+                    if 'verification' in port_info and port_info['verification']:
+                        print("  Vulnerability Verification (from Vulners):")
+                        print(port_info['verification'])
+
     else:
         print(f"No open ports found on {target} or host is down.")
