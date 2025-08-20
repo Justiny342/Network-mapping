@@ -92,9 +92,13 @@ def create_network_diagram(hosts, dns_servers, output_filename="network_map"):
         with Cluster("DNS Servers"):
             dns_nodes = [EC2(label=server) for server in dns_servers]
 
-if __name__ == "__main__":
-    # The script is in network_mapper, so the scan file is in the parent dir
-    scan_results_file = "../network_scan.xml"
+def main():
+    """
+    Main function to run the command-line version of the network mapper.
+    """
+    # Build a robust path to the scan file, which is in the project root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    scan_results_file = os.path.join(script_dir, "..", "network_scan.xml")
 
     if not os.path.exists(scan_results_file):
         print(f"Error: Nmap scan file not found at {scan_results_file}")
@@ -123,3 +127,6 @@ if __name__ == "__main__":
         create_network_diagram(discovered_hosts, dns_servers)
         if DIAGRAMS_AVAILABLE:
             print("\nNetwork map image generated as network_map.png")
+
+if __name__ == "__main__":
+    main()
